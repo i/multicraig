@@ -30,7 +30,7 @@ func main() {
 	})
 
 	http.HandleFunc("/closeCities", func(w http.ResponseWriter, r *http.Request) {
-		miles, err := strconv.ParseFloat(r.FormValue("miles"), 64)
+		distanceMi, err := strconv.ParseFloat(r.FormValue("distanceMi"), 64)
 		if err != nil {
 			fmt.Fprint(w, err.Error())
 			return
@@ -41,7 +41,7 @@ func main() {
 			fmt.Fprint(w, err.Error())
 			return
 		}
-		cities := city.CitiesWithin(miles)
+		cities := city.CitiesWithin(distanceMi)
 		buf, err := json.Marshal(cities)
 		if err != nil {
 			fmt.Fprint(w, err.Error())
@@ -54,7 +54,15 @@ func main() {
 		city := r.FormValue("city")
 		query := r.FormValue("query")
 		category := r.FormValue("category")
-		results, err := cl.SearchCity(city, category, query)
+		if category == "" {
+			category = "sss"
+		}
+		distanceMi, err := strconv.ParseFloat(r.FormValue("distanceMi"), 64)
+		if err != nil {
+			distanceMi = 0
+		}
+
+		results, err := cl.Search(city, category, query, distanceMi)
 		if err != nil {
 			fmt.Fprintf(w, err.Error())
 			return

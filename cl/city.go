@@ -146,19 +146,45 @@ type Post struct {
 	Image string
 }
 
-func SearchCity(cityName, category, query string) ([]Post, error) {
-	// default category to for sale
-	if category == "" {
-		category = "sss"
-	}
+type SearchResult struct {
+	City  City
+	Posts []Post
+}
 
+func Search(cityName, category, query string, distanceMI float64) ([]SearchResult, error) {
 	city, err := GetCity(cityName)
 	if err != nil {
 		return nil, err
 	}
 
-	feed, err := rss.Fetch(fmt.Sprintf(searchCityStr, city.URL, category, query))
+	cities := append([]City{city}, city.CitiesWithin(distanceMI)...)
+	results := make([]SearchResult, 0)
+
+	var wg sync.WaitGroup
+	var m sync.Mutex
+	for _, city := range cities {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			posts, err := city.Search(category, query)
+			if err != nil {
+				log.Print(err)
+				return
+			}
+			m.Lock()
+			results = append(results, SearchResult{City: city, Posts: posts})
+			m.Unlock()
+		}()
+	}
+	wg.Wait()
+
+	return results, nil
+}
+
+func (c City) Search(category, query string) ([]Post, error) {
+	feed, err := rss.Fetch(fmt.Sprintf(searchCityStr, c.URL, category, query))
 	if err != nil {
+		fmt.Println(fmt.Sprintf(searchCityStr, c.URL, category, query))
 		return nil, err
 	}
 
