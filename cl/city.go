@@ -7,24 +7,21 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
 	"sync"
-	"time"
 
 	"multicraig/storage"
 
-	"github.com/SlyMarbo/rss"
 	"github.com/i/jdog"
 )
 
 const (
 	kmtomiles       = float64(0.621371192)
 	earthRadius     = float64(6371)
-	jpgType         = "image/jpeg"
 	clCityURL       = "http://www.craigslist.org/about/sites"
-	searchCityStr   = "%s/search/%s?format=rss&query=%s"
 	cityLocationURL = "https://maps.googleapis.com/maps/api/geocode/json?address=%s,+%s&key=%s"
 )
 
@@ -38,10 +35,6 @@ var (
 
 	cache = storage.NewStore()
 )
-
-func init() {
-	rss.CacheParsedItemIDs(false)
-}
 
 type City struct {
 	Name   string
@@ -118,10 +111,6 @@ func GetCities() ([]City, error) {
 
 	var wg sync.WaitGroup
 	for i, c := range cities {
-		//TODO -- remove when real
-		if i == 5 {
-			break
-		}
 		wg.Add(1)
 		go func(i int, c City) {
 			defer wg.Done()
@@ -139,89 +128,19 @@ func GetCities() ([]City, error) {
 	return cities, nil
 }
 
-type Post struct {
-	Title string
-	URL   string
-	Date  time.Time
-	Image string
-}
-
-type SearchResult struct {
-	City  City
-	Posts []Post
-}
-
-func Search(cityName, category, query string, distanceMI float64) ([]SearchResult, error) {
-	city, err := GetCity(cityName)
-	if err != nil {
-		return nil, err
-	}
-
-	cities := append([]City{city}, city.CitiesWithin(distanceMI)...)
-	results := make([]SearchResult, 0)
-
-	var wg sync.WaitGroup
-	var m sync.Mutex
-	for _, city := range cities {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			posts, err := city.Search(category, query)
-			if err != nil {
-				log.Print(err)
-				return
-			}
-			m.Lock()
-			results = append(results, SearchResult{City: city, Posts: posts})
-			m.Unlock()
-		}()
-	}
-	wg.Wait()
-
-	return results, nil
-}
-
-func (c City) Search(category, query string) ([]Post, error) {
-	feed, err := rss.Fetch(fmt.Sprintf(searchCityStr, c.URL, category, query))
-	if err != nil {
-		fmt.Println(fmt.Sprintf(searchCityStr, c.URL, category, query))
-		return nil, err
-	}
-
-	results := make([]Post, 0)
-	for _, item := range feed.Items {
-		results = append(results, newPost(item))
-	}
-	return results, nil
-}
-
-func newPost(item *rss.Item) Post {
-	post := Post{
-		Title: item.Title,
-		Date:  item.Date,
-		URL:   item.Link,
-	}
-	for _, e := range item.Enclosures {
-		if e.Type == jpgType {
-			post.Image = e.Url
-			break
-		}
-	}
-	return post
-}
-
 func (c City) GetLocation() (lat, lng float64, err error) {
 	if c.Lat != 0 && c.Lng != 0 {
 		return c.Lat, c.Lng, nil
 	}
 
-	res, err := http.Get(fmt.Sprintf(cityLocationURL, c.Name, c.Region, gapikey))
+	url := fmt.Sprintf(cityLocationURL, url.QueryEscape(c.Name), url.QueryEscape(c.Region), gapikey)
+	res, err := http.Get(url)
 	defer res.Body.Close()
 	if err != nil {
 		return 0, 0, err
 	}
 	if res.StatusCode != http.StatusOK {
-		return 0, 0, fmt.Errorf("bad status code from google: %d", res.StatusCode)
+		return 0, 0, fmt.Errorf("%s\t%d", url, res.StatusCode)
 	}
 
 	buf, err := ioutil.ReadAll(res.Body)
@@ -236,7 +155,7 @@ func (c City) GetLocation() (lat, lng float64, err error) {
 
 	v, err := jdog.Get(m, "results[0].geometry.location.lat")
 	if err != nil {
-		return 0, 0, fmt.Errorf("lat/lng not found for %s", c.Name)
+		return 0, 0, fmt.Errorf("lat/lng not found for %s\nurl: %s\n: m: %v", c.Name, url, m)
 	}
 	lat = v.(float64)
 
