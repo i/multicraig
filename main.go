@@ -54,13 +54,19 @@ func main() {
 		city := r.FormValue("city")
 		query := r.FormValue("query")
 		category := r.FormValue("category")
-		res, err := cl.SearchCity(city, category, query)
+		results, err := cl.SearchCity(city, category, query)
 		if err != nil {
 			fmt.Fprintf(w, err.Error())
 			return
 		}
 
-		fmt.Fprintf(w, res)
+		buf, err := json.Marshal(results)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprint(w, err.Error())
+		}
+
+		w.Write(buf)
 	})
 
 	http.ListenAndServe("localhost:3000", nil)

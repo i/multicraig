@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"multicraig/storage"
 
@@ -21,8 +22,9 @@ import (
 const (
 	kmtomiles       = float64(0.621371192)
 	earthRadius     = float64(6371)
+	jpgType         = "image/jpeg"
 	clCityURL       = "http://www.craigslist.org/about/sites"
-	searchCityStr   = "http://%s.craigslist.org/search/%s?format=rss&query=%s"
+	searchCityStr   = "%s/search/%s?format=rss&query=%s"
 	cityLocationURL = "https://maps.googleapis.com/maps/api/geocode/json?address=%s,+%s&key=%s"
 )
 
@@ -36,6 +38,10 @@ var (
 
 	cache = storage.NewStore()
 )
+
+func init() {
+	rss.CacheParsedItemIDs(false)
+}
 
 type City struct {
 	Name   string
@@ -136,24 +142,46 @@ func GetCities() ([]City, error) {
 type Post struct {
 	Title string
 	URL   string
+	Date  time.Time
 	Image string
 }
 
-func SearchCity(city, category, query string) (string, error) {
+func SearchCity(cityName, category, query string) ([]Post, error) {
 	// default category to for sale
 	if category == "" {
 		category = "sss"
 	}
 
-	feed, err := rss.Fetch(fmt.Sprintf(searchCityStr, city, query))
+	city, err := GetCity(cityName)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	for _, item := range feed.Items {
-		fmt.Println(item)
+	feed, err := rss.Fetch(fmt.Sprintf(searchCityStr, city.URL, category, query))
+	if err != nil {
+		return nil, err
 	}
-	return "", nil
+
+	results := make([]Post, 0)
+	for _, item := range feed.Items {
+		results = append(results, newPost(item))
+	}
+	return results, nil
+}
+
+func newPost(item *rss.Item) Post {
+	post := Post{
+		Title: item.Title,
+		Date:  item.Date,
+		URL:   item.Link,
+	}
+	for _, e := range item.Enclosures {
+		if e.Type == jpgType {
+			post.Image = e.Url
+			break
+		}
+	}
+	return post
 }
 
 func (c City) GetLocation() (lat, lng float64, err error) {
