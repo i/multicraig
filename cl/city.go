@@ -13,9 +13,8 @@ import (
 	"strings"
 	"sync"
 
-	"multicraig/storage"
-
 	"github.com/i/jdog"
+	"github.com/i/multicraig/storage"
 )
 
 const (

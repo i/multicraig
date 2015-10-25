@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"multicraig/cl"
+	"github.com/i/multicraig/cl"
 )
 
 func main() {
