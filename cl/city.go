@@ -27,8 +27,11 @@ const (
 )
 
 var (
-	cityRE   = regexp.MustCompile(`<li>.*http://([a-z]*)\.craigslist.*</a>`)
+	//cityRE   = regexp.MustCompile(`<li>.*http://.*"([a-z]*)\.craigslist.*">(.*)</a>`)
+	//cityRE   = regexp.MustCompile(`^<li><a href="(.*)".*>(.*)</a></li>$`)
+	cityRE   = regexp.MustCompile(`^<li><a href="(.*)">([a-zA-Z|\s]+)</a></li>$`)
 	regionRE = regexp.MustCompile(`<h4>(.*)</h4>`)
+	wwwRE    = regexp.MustCompile(`www.craigslist.org`)
 	gapikey  = os.Getenv("MAPSAPIKEY")
 
 	cache = storage.NewStore()
@@ -37,6 +40,7 @@ var (
 type City struct {
 	Name   string
 	Region string
+	URL    string
 	Lat    float64
 	Lng    float64
 }
@@ -85,24 +89,30 @@ func GetCities() ([]City, error) {
 
 	var region string
 	for _, line := range strings.Split(string(buf), "\n") {
-		m := regionRE.FindSubmatch([]byte(line))
+		m := regionRE.FindStringSubmatch(line)
 		if len(m) > 1 {
-			region = string(m[1])
+			region = m[1]
+			continue
 		}
 
-		m = cityRE.FindSubmatch([]byte(line))
+		m = cityRE.FindStringSubmatch(line)
 		if len(m) > 1 {
+			if wwwRE.MatchString(m[1]) {
+				continue
+			}
+
 			c := City{
-				Name:   string(m[1]),
 				Region: region,
+				Name:   m[2],
+				URL:    m[1],
 			}
 			cities = append(cities, c)
 		}
 	}
 
-	fmt.Println("got cities")
 	var wg sync.WaitGroup
 	for i, c := range cities {
+		//TODO -- remove when real
 		if i == 5 {
 			break
 		}
@@ -172,9 +182,6 @@ func (c City) GetLocation() (lat, lng float64, err error) {
 
 	v, err := jdog.Get(m, "results[0].geometry.location.lat")
 	if err != nil {
-		fmt.Println(m)
-		b, _ := json.Marshal(m)
-		fmt.Println(string(b))
 		return 0, 0, fmt.Errorf("lat/lng not found for %s", c.Name)
 	}
 	lat = v.(float64)

@@ -56,7 +56,7 @@ func main() {
 		category := r.FormValue("category")
 		res, err := cl.SearchCity(city, category, query)
 		if err != nil {
-			fmt.Fprintf(w, "Sorry, bud")
+			fmt.Fprintf(w, err.Error())
 			return
 		}
 
